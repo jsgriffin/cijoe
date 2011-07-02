@@ -93,20 +93,6 @@ class CIJoe
     Thread.new { build!(branch) }
   end
 
-  def open_pipe(cmd)
-    read, write = IO.pipe
-
-    pid = fork do
-      read.close
-      $stdout.reopen write
-      exec cmd
-    end
-
-    write.close
-
-    yield read, pid
-  end
-
   # update git then run the build
   def build!(branch=nil)
     @git_branch = branch
@@ -117,12 +103,11 @@ class CIJoe
     build.branch = git_branch
     write_build 'current', build
 
-    open_pipe("cd #{@project_path} && #{runner_command} 2>&1") do |pipe, pid|
-      puts "#{Time.now.to_i}: Building #{build.branch} at #{build.short_sha}: pid=#{pid}"
-
-      build.pid = pid
+    IO.popen("cd #{@project_path} && #{runner_command} 2>&1") do |io|
+      puts "#{Time.now.to_i}: Building #{build.branch} at #{build.short_sha}: pid=#{io.pid}"
+      output = io.read
+      build.pid = io.pid
       write_build 'current', build
-      output = pipe.read
     end
 
     Process.waitpid(build.pid, 1)
